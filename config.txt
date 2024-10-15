@@ -1,0 +1,42 @@
+# (注意不能在参数后边加注释,只能空行上加注释)
+
+
+# 地图类型 2D OR 3D
+MapFileType = 3D
+
+# 地图路径 
+MapFilePath = /home/xp/aContactPlanning/MPI_CPP_Version/terrainFile/3dRandomTerrain.txt
+
+
+# MCTS执行时间
+MPI_run_time = 5
+
+# 任务系数
+JOB_FACTOR = 3
+
+
+######################MCTS参数###########################################
+
+# Virtual loss
+IsVirtualLoss = true
+
+# Best BP Flag:  true 使用, false 不使用 (只针对不采用power mean的情况)
+IsBestBP = true
+
+# p参数
+P_Parameter =  100
+
+# 是否采用POWER_MEAN: true 使用, false 不使用
+USE_POWER_MEAN = false
+
+
+################约束部分###########################################3
+
+# 是否碰撞检测: true 使用, false 不使用
+COLLISION_CHECK = false
+
+# 是否使用最大法向力约束: true 使用, false 不使用
+IsMaxForceConstraint = false
+
+# 是否使用力矩限幅约束
+IsToruqeLimitConstraint = false
