@@ -32,17 +32,14 @@ message(STATUS "Found Python interpreter: ${PYTHON_VERSION_STRING}")
 # endif()
 
 
-# # Find MPI package
-# find_package(MPI REQUIRED)
-# if (MPI_INCLUDE_PATH)
-# 	message(STATUS "Found MPI")
-# 	MESSAGE(STATUS "MPI found at: ${MPI_CXX_INCLUDE_DIRS}")
-# 	include_directories(${MPI_INCLUDE_PATH})	#包含MPI库头文件
-# endif()
-# 查找 MPI 包
+# Find MPI package
 find_package(MPI REQUIRED)
-# 包含 MPI 头文件
-include_directories(${MPI_INCLUDE_PATH})
+if (MPI_INCLUDE_PATH)
+	message(STATUS "Found MPI")
+	MESSAGE(STATUS "MPI found at: ${MPI_CXX_INCLUDE_DIRS}")
+	include_directories(${MPI_INCLUDE_PATH})	#包含MPI库头文件
+endif()
+
 
 # Find Eigen3 package
 find_package(Eigen3 REQUIRED)
@@ -83,8 +80,8 @@ include_directories(${catkin_INCLUDE_DIRS})
 
 
 	
-add_executable(parallelMCTS_VirtualLoss parallelMCTS_VirtualLoss.cpp)
-target_link_libraries(parallelMCTS_VirtualLoss 
+add_executable(main main.cpp)
+target_link_libraries(main 
 	${MPI_LIBRARIES} 
 	${grid_map_core_LIBRARIES} 
 	${catkin_LIBRARIES} 

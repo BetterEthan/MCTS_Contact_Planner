@@ -71,6 +71,6 @@ sudo make install
     change the path of config.txt at 'planFile/include/user.h'
 
 ## Command
-    mpirun -n $processor number$ ./bin/parallelMCTS_VirtualLoss 
+    mpirun -n $processor number$ ./bin/main 
 
 

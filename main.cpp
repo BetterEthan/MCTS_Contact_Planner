@@ -3,12 +3,10 @@
 #include <cstring>
 #include <myDataType.h>
 #include <geometryFun.h>
-// #include <grid_map_ros/grid_map_ros.hpp> //grid_map地图
 #include <grid_map_core/GridMap.hpp>
 #include <planning.h>
 #include "ros/ros.h"
 #include <std_msgs/String.h>
-// #include <hexapod_msgs/RPY.h>
 #include "zobrist_hash.h"
 #include <deque>
 #include <hit_spider/hexapod_State.h>
@@ -219,7 +217,6 @@ void ParalleMCTS_FUN(HashTable &hsm, const grid_map::GridMap &mapData_,  MPI_Com
     gaitToNow << SUPPORT,SUPPORT,SUPPORT,SUPPORT,SUPPORT,SUPPORT;
     float moveDir = 0*_PI_/2;
     MDT::RobotState state_ = HexapodParameter::initRobotState(robotPoseW, gaitToNow, moveDir);
-    // gaitToNow << NORMAL_LEG,FAULT_LEG,NORMAL_LEG,NORMAL_LEG,FAULT_LEG,NORMAL_LEG;
     
     // 初始化单个任务, 后续运行后会增加新任务
     if (rank == rootdest) {
@@ -300,9 +297,6 @@ void ParalleMCTS_FUN(HashTable &hsm, const grid_map::GridMap &mapData_,  MPI_Com
             }
         }
 
-        // std::cout << "rank:" << rank  << " hashTable.size: " << hsm.hashTable.size() << " maxExtendedNode_Length: " << maxExtendedNode_Length <<  std::endl;
-        // std::cout << "rank:" << rank  << " hashTable.size: " << hsm.hashTable.size() << " maxExtendedNode_Length: " << maxExtendedNode_Length 
-        //     << ", timeCost: "<< MPI_Wtime() - start_time <<  std::endl;
         if(jobq.empty()) noneJob2 = true;
         // 再处理所有的消息
         bool jobq_non_empty = !jobq.empty();
@@ -328,7 +322,7 @@ void ParalleMCTS_FUN(HashTable &hsm, const grid_map::GridMap &mapData_,  MPI_Com
                     float score_ = node->calculateLocalScore(simDistance);
                     // backpropagation on local memory
                     node->updateLocalSimDis(simDistance);
-                    node->updateLocalNode(score_);   // todo: 进行仿真的时候节点传过来没有parent, 而且childNode等都没有(这个不一定需要), 应该在add儿子时把节点添加到hash表中,然后通过查找hash表,避免太多的通信传递
+                    node->updateLocalNode(score_);  
                     
                     if (node->hashKey.length() > MAX_DEPTH-1)
                     {
@@ -347,14 +341,7 @@ void ParalleMCTS_FUN(HashTable &hsm, const grid_map::GridMap &mapData_,  MPI_Com
                     // 异常处理
                     if(node->score < 0)
                     {
-                        // std::string parentKey_ = node->hashKey.substr(0, node->hashKey.length() - 1);
-                        // std::cout << "hashKey: " << node->hashKey << std::endl;
-                        // std::cout << "score: " << node->score << std::endl;
-                        // std::cout << "messageScore: " << message.second.score << std::endl;
-                        // std::cout << "sendSelectTpe:" << message.second.num_thread_visited << std::endl;
-                        // std::cout << "节点分值为负" << std::endl;
 
-                        // 这里应该是某个节点同时被访问多次, 本来节点分值为负不应该继续访问, 但是被更新前, 已经被别的任务发送过来了.?????
                         if(node->candidateNodes.empty())
                         {
                             std::cout << "节点分值为0,可能冲突, 应该强制反向传播" << std::endl;
@@ -423,17 +410,7 @@ void ParalleMCTS_FUN(HashTable &hsm, const grid_map::GridMap &mapData_,  MPI_Com
                         else {  // 节点无备选儿子且已经扩展过，选择最佳儿子并进入SELECTION阶段继续扩展
                             TreeNode_ptr childnode = node->selection(USER::IsVirtualLoss);
 
-                            // if(childnode->num_thread_visited > 0)
-                            // {
-                            //     std::cout << "childNode hash key:" << childnode->hashKey << std::endl;
-                            //     std::cout << "重复选择." << std::endl;
-                            //     exit(0);
-                            // }
-
                             if (childnode->score < 0) {  
-                                // printf("最佳儿子节点分值为负\n");
-                                // node->score = childnode->score;
-                                // hsm.insert(Item(node->hashKey, node));  // 更新自己，还需要更新包含自己的父节点
                                 sendBackpropagationMessage(hsm, childnode, comm);  // 这里是可以反传播的,因为最佳儿子是负值,那么父节点就没有更好的儿子了.
                             }
                             else {
@@ -467,8 +444,6 @@ void ParalleMCTS_FUN(HashTable &hsm, const grid_map::GridMap &mapData_,  MPI_Com
                     sendSearchMessage(hsm ,local_parent, comm); 
                 }
                 else { // 未到根节点则继续反向传播
-
-                    // 现在有什么问题呢? 找到好的节点,反向传播,从头开始(如果加上x坐标为reward其实也还好,及时BP了后续也找它). 找不到好的节点,继续找,不反向传播. 有问题.!!
 
                     int flag = local_parent->backpropagation(node);
                     if(flag == BP_TYPE::BETTER_CHILD_BP)
@@ -538,25 +513,6 @@ void ParalleMCTS_FUN(HashTable &hsm, const grid_map::GridMap &mapData_,  MPI_Com
                     hsm.insert(Item(local_parent->hashKey, local_parent));
 
                     sendForceBPnMessage(hsm, local_parent, comm);
-                    // // 这里判断一下local_parent是否还有有价值的儿子
-                    // // 如果没有未采用的candidate,那么可以判断所有儿子的分值是否为负(说明没有具有价值儿子了).
-                    // if (local_parent->candidateNodes.size() == 0) {
-                    //     TreeNode_ptr childnode = local_parent->findBestChild();
-                    //     if (childnode->score < 0) {  
-                    //         local_parent->num_thread_visited += 1; // 特殊情况, 因为一次updateChildBP和一次backpropagation减了两次,需要补回来.
-                    //         hsm.insert(Item(local_parent->hashKey, local_parent));
-                    //         sendBackpropagationMessage(hsm, node, comm);  // 这里是可以反传播的,因为最佳儿子是负值,那么父节点就没有更好的儿子了.
-                    //     }
-                    //     else {
-                    //         sendSearchMessage(hsm ,local_parent, comm); 
-                    //     }
-                    // }
-                    // // 如果仍有candidate,那么就继续搜索
-                    // else {
-                    //     sendSearchMessage(hsm ,local_parent, comm); 
-                    // }
-
-                    
                 }
             }
             else if (message.first == JobType::TIMEUP) {
@@ -716,106 +672,7 @@ void ParalleMCTS_FUN(HashTable &hsm, const grid_map::GridMap &mapData_,  MPI_Com
                     std::vector<hit_spider::hexapod_State> stateList;
                     for (const auto& data : sequence_result) {
                         stateList.push_back(transRobotState(data));
-                        // std::cout << "find:" << data.pose.x << std::endl;
-                        // std::cout << "Pose: " << std::endl;
-                        // std::cout << "x: " << data.pose.x << std::endl;
-                        // std::cout << "y: " << data.pose.y << std::endl;
-                        // std::cout << "z: " << data.pose.z << std::endl;
-                        // std::cout << "roll: " << data.pose.roll << std::endl;
-                        // std::cout << "pitch: " << data.pose.pitch << std::endl;
-                        // std::cout << "yaw: " << data.pose.yaw << std::endl;
-                        // std::cout << "Gait to now: ";
-                        // for (int i = 0; i < 6; ++i)
-                        // {
-                        //     std::cout << data.gaitToNow[i] << " ";
-                        // }
-                        // std::cout << std::endl;
-                        // std::cout << "Fault state to now: ";
-                        // for (int i = 0; i < 6; ++i)
-                        // {
-                        //     std::cout << data.faultStateToNow[i] << " ";
-                        // }
-                        // std::cout << std::endl;
-                        // std::cout << "Feet position: ";
-                        // for (int i = 0; i < 6; ++i)
-                        // {
-                        //     std::cout << "(" << data.feetPosition[i].x() << "," << data.feetPosition[i].y() << "," << data.feetPosition[i].z() << ") ";
-                        // }
-
-
-                        // std::cout << std::endl;
-                        // for (int i = 0; i < 6; ++i)
-                        // {
-                        //     std::cout << "maxForce:" << data.maxNormalForce[i] << " ";
-                        // }
-                        // std::cout << std::endl;
                     }
-
-                    // ///////////////////////////////////////////////////////
-                    // for (int i=0; i<sequence_result.size()-1; i++) {
-                    //     MDT::RobotState data_before = sequence_result[i];
-                    //     MDT::RobotState data = sequence_result[i+1];
-                    //     // 数据准备
-                    //     int support_leg_num = 0; // 支撑腿数量
-                    //     for (int j = 0; j < 6; ++j)
-                    //     {
-                    //         if(data.gaitToNow(j) == SUPPORT)
-                    //             support_leg_num += 1;
-                    //     }
-                    //     std::vector<int> support_leg;                 // 支撑腿标号
-                    //     MatrixX3 contact_Points(support_leg_num, 3);  // 支撑腿接触点
-                    //     MatrixXX CWC_inputs(support_leg_num, 2);      // 支撑点的x,y坐标
-                    //     MatrixX3 contact_normals(support_leg_num, 3); // 接触点法向量
-                    //     contact_normals.setZero();
-                    //     contact_normals.col(2).setOnes(); // 先考虑简单情况, 将第三列设置为1, 其余元素不变. 即接触点法向量为(0,0,1)
-                    //     VectorX contact_maxmumF(support_leg_num); // 接触点最大地面反作用力
-                    //     MatrixXX CWC_Vertices;
-                    //     // 记录接触点数据
-                    //     int row_index = 0;
-                    //     for (int j = 0; j < 6; ++j)
-                    //     {
-                    //         if (data.gaitToNow(j) == SUPPORT)  // 支撑
-                    //         {
-                    //             // contact_maxmumF(row_index)  = 1000;
-                    //             contact_maxmumF(row_index)  = data.maxNormalForce[j];
-
-
-                    //             CWC_inputs.row(row_index) << data.feetPosition[j].x(),
-                    //                 data.feetPosition[j].y();
-                                
-                    //             contact_Points.row(row_index++) << data.feetPosition[j].x(),
-                    //                 data.feetPosition[j].y(),
-                    //                 data.feetPosition[j].z();
-
-
-                    //             support_leg.push_back(j + 1);  // 记录几号腿为支撑腿
-                    //         }
-                    //     }
-                    //     if(!Robot_State_Transition::comput_friction_region_considerMaxF(contact_Points, contact_normals, contact_maxmumF, 0.2, Robot_State_Transition::Mass, CWC_Vertices))
-                    //     {
-                    //         std::cout << "\033[ stop1 \t\033[0m" << std::endl;
-                    //         exit(0); // 质心位置不在cwc内部
-                    //     }
-                    //     if(CWC_Vertices.rows() < 3)
-                    //     {
-                    //         std::cout << "\033[ stop2 \t\033[0m" << std::endl;
-                    //         exit(0); // 质心位置不在cwc内部
-                    //     }
-
-                    //     // 将平面凸多边形顶点转换为不等式形式
-                    //     auto Ab_cwc = Robot_State_Transition::Bretl_Vettices_to_face(CWC_Vertices);
-
-                    //     // 判断质心位置是否在cwc内部, 其实用判断是否在凸多边形内就可以了.
-                    //     VectorX is_in_cwc = Ab_cwc.first * point_Planar(data_before.pose.x, data_before.pose.y); // 现在是判断质心是否在单步结束后的支撑多边形中
-
-                    //     if(!((is_in_cwc.array() <= Ab_cwc.second.array()).all()))
-                    //     {
-                    //         std::cout << "\033[ stop3 \t\033[0m" << std::endl;
-                    //         exit(0); // 质心位置不在cwc内部
-                    //     }
-                    
-                    // }
-                    // ////////////////////////////////////////////////////////////
 
                     // 输出stateList最后一个元素
                     stateList.back().remarks.data = "end_flag";
@@ -965,21 +822,13 @@ int main(int argc, char** argv) {
     MPI_Comm_size(MPI_COMM_WORLD, &size); // 获取进程数
     MPI_Comm_rank(MPI_COMM_WORLD, &rank); // 获取当前进程的rank
     
-    // int buffer_size = 100; /* 根据您的需求设置缓冲区大小 */
-    // MessageMPI* buffer = (MessageMPI*)malloc(buffer_size * sizeof(MessageMPI));
-    // MPI_Buffer_attach(buffer, buffer_size * sizeof(MessageMPI));
-
     int processorN = size;
 
     HashTable hsm(processorN, USER::key_element, USER::max_depth, USER::key_element.size());  // 每个线程都有一个hash表
 
-    // 使用MPI_Barrier可以确保在继续执行后续代码之前，所有进程都已经完成了之前的计算任务。
     MPI_Barrier(MPI_COMM_WORLD); 
-    // ProfilerStart("/home/xp/aConstrainedContactPlan/parallel_file/MPI_CPP_Version/build/bin/dump.txt");
 
     ParalleMCTS_FUN(hsm, USER::mapData, MPI_COMM_WORLD, argc, argv);
-    // ProfilerFlush();
-    // ProfilerStop();
 
     MPI_Finalize(); // 结束MPI环境
     return 0;
